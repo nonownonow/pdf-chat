@@ -1,0 +1,70 @@
+import fitz
+import tempfile
+import os
+from openai import OpenAI
+
+SYSTEM_PROMPT_TEMPLATE = (
+    "당신은 PDF 문서 전문 어시스턴트입니다. "
+    "아래 PDF에서 추출한 텍스트를 바탕으로 사용자의 질문에 한국어로 답변하세요. "
+    "문서에 없는 내용은 추측하지 마세요.\n\n"
+    "=== PDF 내용 ===\n{pdf_text}\n=== PDF 끝 ==="
+)
+
+
+def extract_pdf_text(pdf_bytes: bytes) -> str:
+    """PDF 전체 텍스트를 추출합니다."""
+    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+        tmp.write(pdf_bytes)
+        tmp_path = tmp.name
+
+    try:
+        doc = fitz.open(tmp_path)
+        pages = [doc[i].get_text() for i in range(len(doc))]
+        doc.close()
+        return "\n\n".join(pages).strip()
+    finally:
+        os.unlink(tmp_path)
+
+
+def chat_with_gpt(pdf_text: str, messages: list[dict], api_key: str):
+    """GPT-4.1-mini 스트리밍 대화."""
+    client = OpenAI(api_key=api_key)
+
+    response = client.chat.completions.create(
+        model="gpt-4.1-mini",
+        messages=[
+            {"role": "system", "content": SYSTEM_PROMPT_TEMPLATE.format(pdf_text=pdf_text)},
+            *messages,
+        ],
+        temperature=0.3,
+        stream=True,
+    )
+
+    for chunk in response:
+        content = chunk.choices[0].delta.content
+        if content:
+            yield content
+
+
+def chat_with_exaone(pdf_text: str, messages: list[dict], api_key: str, model_id: str):
+    """EXAONE(Friendli AI) 스트리밍 대화."""
+    client = OpenAI(
+        api_key=api_key,
+        base_url="https://api.friendli.ai/dedicated/v1",
+    )
+
+    response = client.chat.completions.create(
+        model=model_id,
+        messages=[
+            {"role": "system", "content": SYSTEM_PROMPT_TEMPLATE.format(pdf_text=pdf_text)},
+            *messages,
+        ],
+        temperature=0.7,
+        max_tokens=512,
+        stream=True,
+    )
+
+    for chunk in response:
+        content = chunk.choices[0].delta.content
+        if content:
+            yield content
