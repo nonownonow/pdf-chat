@@ -28,43 +28,73 @@ def extract_pdf_text(pdf_bytes: bytes) -> str:
 
 def chat_with_gpt(pdf_text: str, messages: list[dict], api_key: str):
     """GPT-4.1-mini 스트리밍 대화."""
+    from openai import APIError, APIConnectionError, APIStatusError
+
     client = OpenAI(api_key=api_key)
 
-    response = client.chat.completions.create(
-        model="gpt-4.1-mini",
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPT_TEMPLATE.format(pdf_text=pdf_text)},
-            *messages,
-        ],
-        temperature=0.3,
-        stream=True,
-    )
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4.1-mini",
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT_TEMPLATE.format(pdf_text=pdf_text)},
+                *messages,
+            ],
+            temperature=0.3,
+            stream=True,
+        )
 
-    for chunk in response:
-        content = chunk.choices[0].delta.content
-        if content:
-            yield content
+        for chunk in response:
+            content = chunk.choices[0].delta.content
+            if content:
+                yield content
+    except APIConnectionError:
+        yield "⚠️ OpenAI 서버에 연결할 수 없습니다. 네트워크 상태를 확인해주세요."
+    except APIStatusError as e:
+        if e.status_code == 401:
+            yield "⚠️ API 키가 유효하지 않습니다."
+        elif e.status_code == 429:
+            yield "⚠️ API 요청 한도를 초과했습니다. 잠시 후 다시 시도해주세요."
+        else:
+            yield f"⚠️ API 오류 ({e.status_code}): {e.message}"
+    except APIError as e:
+        yield f"⚠️ API 오류: {e.message}"
 
 
 def chat_with_exaone(pdf_text: str, messages: list[dict], api_key: str, model_id: str):
     """EXAONE(Friendli AI) 스트리밍 대화."""
+    from openai import APIError, APIConnectionError, APIStatusError
+
     client = OpenAI(
         api_key=api_key,
         base_url="https://api.friendli.ai/dedicated/v1",
     )
 
-    response = client.chat.completions.create(
-        model=model_id,
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPT_TEMPLATE.format(pdf_text=pdf_text)},
-            *messages,
-        ],
-        temperature=0.7,
-        max_tokens=512,
-        stream=True,
-    )
+    try:
+        response = client.chat.completions.create(
+            model=model_id,
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT_TEMPLATE.format(pdf_text=pdf_text)},
+                *messages,
+            ],
+            temperature=0.7,
+            max_tokens=512,
+            stream=True,
+        )
 
-    for chunk in response:
-        content = chunk.choices[0].delta.content
-        if content:
-            yield content
+        for chunk in response:
+            content = chunk.choices[0].delta.content
+            if content:
+                yield content
+    except APIConnectionError:
+        yield "⚠️ EXAONE 서버에 연결할 수 없습니다. 네트워크 상태를 확인해주세요."
+    except APIStatusError as e:
+        if e.status_code == 500:
+            yield "⚠️ EXAONE 엔드포인트가 비활성화 상태입니다. Friendli AI 콘솔에서 엔드포인트를 깨워주세요."
+        elif e.status_code == 401:
+            yield "⚠️ API 키가 유효하지 않습니다."
+        elif e.status_code == 404:
+            yield "⚠️ Model ID가 존재하지 않습니다."
+        else:
+            yield f"⚠️ API 오류 ({e.status_code}): {e.message}"
+    except APIError as e:
+        yield f"⚠️ API 오류: {e.message}"
