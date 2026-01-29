@@ -5,6 +5,14 @@ from pdf_summary_service import extract_pdf_text, chat_with_gpt, chat_with_exaon
 
 load_dotenv()
 
+
+def get_secret(key: str, default: str = "") -> str:
+    """st.secrets 또는 환경변수에서 값을 가져옵니다."""
+    try:
+        return st.secrets.get(key, os.getenv(key, default))
+    except Exception:
+        return os.getenv(key, default)
+
 st.set_page_config(page_title="PDF 채팅", page_icon="📄")
 
 # ── Session State 초기화 ──────────────────
@@ -24,18 +32,18 @@ with st.sidebar:
     if model_choice == "GPT-4.1-mini":
         openai_key = st.text_input(
             "OpenAI API Key",
-            value=os.getenv("OPEN_AI_API", ""),
+            value=get_secret("OPEN_AI_API"),
             type="password",
         )
     else:
         exaone_key = st.text_input(
             "EXAONE API Key (Friendli)",
-            value=os.getenv("EXAONE_API", ""),
+            value=get_secret("EXAONE_API"),
             type="password",
         )
         exaone_model = st.text_input(
             "EXAONE Model ID",
-            value=os.getenv("EXAONE_MODEL_ID", ""),
+            value=get_secret("EXAONE_MODEL_ID"),
         )
 
     st.divider()
